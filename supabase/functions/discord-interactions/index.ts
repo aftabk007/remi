@@ -128,14 +128,20 @@ function tzOffsetMinutes(tz: string, at: Date): number {
   return Math.round((asUTC - at.getTime()) / 60000);
 }
 
-// Parse `when` as natural language interpreted in the owner's timezone.
-// chrono returns a Date in the runtime's local zone (UTC on Deno Deploy);
-// shift it so the wall-clock fields are interpreted in the owner's tz.
+// Parse `when` as natural language. Relative phrases ("in 2 minutes") yield
+// an absolute UTC instant from chrono directly. Absolute clock phrases
+// ("9am", "14:00") are returned as runtime-local (UTC on Deno Deploy) and
+// must be reinterpreted in the owner's timezone.
 function parseWhen(input: string, tz: string): Date | null {
   const now = new Date();
   const result = chrono.parse(input, now, { forwardDate: true })[0];
   if (!result) return null;
   const naive = result.start.date();
+  const userGaveClockTime = result.start.isCertain("hour");
+  const userGaveTzOffset = result.start.isCertain("timezoneOffset");
+  if (!userGaveClockTime || userGaveTzOffset) {
+    return naive;
+  }
   const offsetMin = tzOffsetMinutes(tz, naive);
   return new Date(naive.getTime() - offsetMin * 60_000);
 }
