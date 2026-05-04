@@ -1,72 +1,46 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useRouter } from "next/navigation";
+
+type Mode = "signin" | "signup";
 
 export function LoginForm() {
+  const router = useRouter();
+  const [mode, setMode] = useState<Mode>("signin");
   const [email, setEmail] = useState("");
-  const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">(
-    "idle",
-  );
+  const [password, setPassword] = useState("");
+  const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setStatus("sending");
+    setPending(true);
     setError(null);
-    const supabase = createClient();
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: `${location.origin}/auth/callback` },
+
+    const response = await fetch("/auth/password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode, email, password }),
     });
-    if (error) {
-      setStatus("error");
-      setError(error.message);
+
+    if (!response.ok) {
+      const data = (await response.json().catch(() => null)) as {
+        error?: string;
+      } | null;
+      setPending(false);
+      setError(data?.error ?? "Could not log you in. Try again.");
       return;
     }
-    setStatus("sent");
+
+    router.replace("/reminders");
+    router.refresh();
   }
 
-  if (status === "sent") {
-    return (
-      <div className="space-y-3 text-center animate-in">
-        <div className="mx-auto h-12 w-12 rounded-full bg-success-soft text-success grid place-items-center">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="h-6 w-6"
-            aria-hidden
-          >
-            <path d="M4 12l5 5L20 6" />
-          </svg>
-        </div>
-        <div className="space-y-1">
-          <p className="font-medium">Check your inbox</p>
-          <p className="text-sm text-muted break-words">
-            We sent a magic link to <strong>{email}</strong>.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => {
-            setStatus("idle");
-            setEmail("");
-          }}
-          className="text-xs text-muted hover:text-foreground underline-offset-4 hover:underline"
-        >
-          Use a different email
-        </button>
-      </div>
-    );
-  }
+  const isSignUp = mode === "signup";
 
   return (
-    <form onSubmit={onSubmit} className="space-y-3">
+    <form onSubmit={onSubmit} className="space-y-3" autoComplete="on">
       <label className="block space-y-1.5">
         <span className="text-xs font-medium text-muted">Email</span>
         <input
@@ -81,13 +55,35 @@ export function LoginForm() {
           className="w-full rounded-lg border border-border bg-background-elevated px-3 py-2.5 text-sm transition-colors placeholder:text-muted/70"
         />
       </label>
+
+      <label className="block space-y-1.5">
+        <span className="text-xs font-medium text-muted">Password</span>
+        <input
+          type="password"
+          required
+          minLength={isSignUp ? 8 : undefined}
+          autoComplete={isSignUp ? "new-password" : "current-password"}
+          placeholder={isSignUp ? "At least 8 characters" : "Your password"}
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          className="w-full rounded-lg border border-border bg-background-elevated px-3 py-2.5 text-sm transition-colors placeholder:text-muted/70"
+        />
+      </label>
+
       <button
         type="submit"
-        disabled={status === "sending" || !email}
+        disabled={pending || !email || !password}
         className="w-full rounded-lg bg-brand text-brand-foreground px-3 py-2.5 text-sm font-medium shadow-sm shadow-brand/30 transition-all hover:brightness-110 active:brightness-95 disabled:opacity-50 disabled:cursor-not-allowed"
       >
-        {status === "sending" ? "Sending magic link…" : "Send magic link"}
+        {pending
+          ? isSignUp
+            ? "Registering…"
+            : "Logging in…"
+          : isSignUp
+            ? "Register"
+            : "Login"}
       </button>
+
       {error && (
         <p
           role="alert"
@@ -96,6 +92,20 @@ export function LoginForm() {
           {error}
         </p>
       )}
+
+      <p className="text-center text-xs text-muted pt-1">
+        {isSignUp ? "Already have an account?" : "First time here?"}{" "}
+        <button
+          type="button"
+          onClick={() => {
+            setMode(isSignUp ? "signin" : "signup");
+            setError(null);
+          }}
+          className="text-brand hover:underline underline-offset-4 font-medium"
+        >
+          {isSignUp ? "Login" : "Register"}
+        </button>
+      </p>
     </form>
   );
 }

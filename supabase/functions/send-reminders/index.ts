@@ -11,6 +11,8 @@ const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const VAPID_PUBLIC = Deno.env.get("VAPID_PUBLIC_KEY")!;
 const VAPID_PRIVATE = Deno.env.get("VAPID_PRIVATE_KEY")!;
 const VAPID_SUBJECT = Deno.env.get("VAPID_SUBJECT") ?? "mailto:noreply@remi.app";
+const FALLBACK_DISCORD_WEBHOOK = Deno.env.get("DISCORD_WEBHOOK_URL")?.trim() ??
+  "";
 
 webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC, VAPID_PRIVATE);
 
@@ -57,6 +59,10 @@ async function sendDiscord(webhookUrl: string, r: Reminder) {
     body: JSON.stringify(body),
   });
   return res.ok ? null : `discord ${res.status}`;
+}
+
+function uniqueChannels(...channelGroups: (string[] | null | undefined)[]) {
+  return [...new Set(channelGroups.flatMap((channels) => channels ?? []))];
 }
 
 async function sendWebPush(
@@ -134,17 +140,25 @@ Deno.serve(async () => {
 
     const { data: settings } = await supabase
       .from("user_settings")
-      .select("discord_webhook_url")
+      .select("discord_webhook_url,default_channels")
       .eq("user_id", r.user_id)
       .maybeSingle();
 
-    if (r.channels.includes("web_push") && subs?.length) {
+    const channels = uniqueChannels(
+      r.channels,
+      settings?.default_channels,
+      FALLBACK_DISCORD_WEBHOOK ? ["discord"] : [],
+    );
+    const discordWebhook = settings?.discord_webhook_url?.trim() ||
+      FALLBACK_DISCORD_WEBHOOK;
+
+    if (channels.includes("web_push") && subs?.length) {
       const err = await sendWebPush(subs, r);
       await logResult(r.id, "web_push", !err, err);
     }
 
-    if (r.channels.includes("discord") && settings?.discord_webhook_url) {
-      const err = await sendDiscord(settings.discord_webhook_url, r);
+    if (channels.includes("discord") && discordWebhook) {
+      const err = await sendDiscord(discordWebhook, r);
       await logResult(r.id, "discord", !err, err);
     }
 

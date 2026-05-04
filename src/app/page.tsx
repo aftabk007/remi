@@ -34,7 +34,7 @@ export default async function Home() {
           <LoginForm />
         </div>
         <p className="text-center text-xs text-muted">
-          We&apos;ll email you a magic link — no password needed.
+          You&apos;ll stay signed in on this device for ~30 days.
         </p>
       </div>
     </main>
