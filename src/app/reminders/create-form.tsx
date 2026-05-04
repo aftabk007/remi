@@ -186,6 +186,9 @@ function ManualForm({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState<string | null>(null);
 
   async function action(fd: FormData) {
+    // Convert datetime-local (local time, no tz) to UTC ISO before sending to server
+    const due = fd.get("due_at") as string;
+    if (due) fd.set("due_at", new Date(due).toISOString());
     setError(null);
     start(async () => {
       try {
