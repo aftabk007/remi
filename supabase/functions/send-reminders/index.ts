@@ -4,7 +4,8 @@
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3.6.7";
-import { rrulestr } from "npm:rrule@2.8.1";
+import rrule from "npm:rrule@2.8.1";
+const { rrulestr } = rrule;
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
