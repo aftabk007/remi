@@ -36,6 +36,14 @@ yarn-error.log*
 # vercel
 .vercel
 
+# Local copy of cron migration contains hardcoded service key.
+# Use 0002_cron.sql.example as the committed template.
+/supabase/migrations/0002_cron.sql
+
+# Supabase CLI machine-local state
+/supabase/.temp
+/supabase/.branches
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
