@@ -1,0 +1,28 @@
+-- pg_cron schedule: invoke send-reminders edge function every minute.
+-- This file is the committed template. The real version (with secrets) lives
+-- at 0002_cron.sql which is gitignored.
+--
+-- To apply: copy this file to 0002_cron.sql, fill in the placeholders, and
+-- paste it into Supabase Dashboard → SQL Editor → Run.
+--
+-- Replace before running:
+--   <PROJECT_REF>    e.g. maevrcssrcbpjbxukqjr
+--   <SERVICE_KEY>    your supabase service_role / secret key
+
+create extension if not exists pg_cron;
+create extension if not exists pg_net;
+
+select cron.schedule(
+  'remi-send-reminders',
+  '* * * * *',
+  $$
+  select net.http_post(
+    url     := 'https://<PROJECT_REF>.functions.supabase.co/send-reminders',
+    headers := jsonb_build_object(
+      'Content-Type',  'application/json',
+      'Authorization', 'Bearer <SERVICE_KEY>'
+    ),
+    body    := '{}'::jsonb
+  ) as request_id;
+  $$
+);
