@@ -4,7 +4,7 @@
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3.6.7";
-import { rrulestr } from "https://esm.sh/rrule@2.8.1";
+import { RRule, rrulestr } from "https://esm.sh/rrule@2.8.1";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -36,17 +36,60 @@ function isoToICal(iso: string): string {
   return iso.replace(/[-:]/g, "").replace(/\.\d+/, "");
 }
 
+// Manual fallback for simple FREQ+INTERVAL rules. Always returns a future date
+// — guarantees recurring reminders never get stranded with next_fire_at = null
+// if the rrule library trips on something inside Deno.
+function manualNextOccurrence(rrule: string, dueAt: Date): Date | null {
+  const parts = Object.fromEntries(
+    rrule.split(";").map((p) => {
+      const [k, v] = p.split("=");
+      return [k.toUpperCase(), v];
+    }),
+  );
+  const interval = parseInt(parts.INTERVAL ?? "1", 10) || 1;
+  const stepMs: Record<string, number> = {
+    MINUTELY: 60_000,
+    HOURLY: 60 * 60_000,
+    DAILY: 24 * 60 * 60_000,
+    WEEKLY: 7 * 24 * 60 * 60_000,
+  };
+  const ms = stepMs[parts.FREQ];
+  if (!ms) return null;
+  const stepSize = interval * ms;
+  const now = Date.now();
+  const elapsed = now - dueAt.getTime();
+  const stepsAhead = elapsed < 0 ? 0 : Math.floor(elapsed / stepSize) + 1;
+  return new Date(dueAt.getTime() + stepsAhead * stepSize);
+}
+
 function nextOccurrence(r: Reminder): string | null {
   if (!r.rrule || !r.due_at) return null;
+  const dueAt = new Date(r.due_at);
+  // Try rrule.js's options-based path first — more robust than the iCal block
+  // parser which has tripped inside Deno on identical inputs that work in Node.
+  try {
+    const opts = RRule.parseString(r.rrule);
+    opts.dtstart = dueAt;
+    const rule = new RRule(opts);
+    const next = rule.after(new Date(), false);
+    if (next) return next.toISOString();
+  } catch (e) {
+    console.error("rrule options-path failed", r.id, r.rrule, e);
+  }
+  // Last-resort iCal block path (preserves prior behavior for exotic rules).
   try {
     const block = `DTSTART:${isoToICal(r.due_at)}\nRRULE:${r.rrule}`;
     const rule = rrulestr(block);
-    const next = rule.after(new Date(), false); // strictly after now
-    return next ? next.toISOString() : null;
+    const next = rule.after(new Date(), false);
+    if (next) return next.toISOString();
   } catch (e) {
-    console.error("rrule parse failed", r.id, r.rrule, e);
-    return null;
+    console.error("rrule block-path failed", r.id, r.rrule, e);
   }
+  // Manual fallback for simple FREQ+INTERVAL rules.
+  const fallback = manualNextOccurrence(r.rrule, dueAt);
+  if (fallback) return fallback.toISOString();
+  console.error("nextOccurrence exhausted all paths", r.id, r.rrule);
+  return null;
 }
 
 async function sendDiscord(webhookUrl: string, r: Reminder) {
